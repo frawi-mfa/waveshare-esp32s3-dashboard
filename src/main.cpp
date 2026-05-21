@@ -2,6 +2,10 @@
 #include <Arduino_GFX_Library.h>
 #include <WiFi.h>
 
+// WiFi Credentials
+const char* WIFI_SSID     = "Tempel-Bau";
+const char* WIFI_PASSWORD = "6502199985512364";
+
 // Display Setup
 Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     5 /* DE */, 3 /* VSYNC */, 46 /* HSYNC */, 7 /* PCLK */,
@@ -12,132 +16,150 @@ Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
 );
 Arduino_RGB_Display *gfx = new Arduino_RGB_Display(800, 480, rgbpanel, 0, true);
 
-// Signalstärke → Balken (1-4)
-int rssiToBars(int rssi) {
-    if (rssi >= -50) return 4;
-    if (rssi >= -65) return 3;
-    if (rssi >= -75) return 2;
-    return 1;
-}
-
-// Signalstärke → Farbe
-uint16_t rssiToColor(int rssi) {
-    if (rssi >= -50) return GREEN;
-    if (rssi >= -65) return YELLOW;
-    if (rssi >= -75) return ORANGE;
-    return RED;
-}
-
-void drawSignalBars(int x, int y, int bars, uint16_t color) {
-    for (int i = 0; i < 4; i++) {
-        int barH = (i + 1) * 5;
-        int barX = x + i * 8;
-        int barY = y + 20 - barH;
-        if (i < bars)
-            gfx->fillRect(barX, barY, 6, barH, color);
-        else
-            gfx->fillRect(barX, barY, 6, barH, DARKGREY);
-    }
-}
-
-void scanWiFi() {
+void drawStatusScreen() {
     gfx->fillScreen(BLACK);
 
     // Titel
     gfx->setTextColor(CYAN);
     gfx->setTextSize(3);
     gfx->setCursor(20, 20);
-    gfx->println("WiFi Scanner");
+    gfx->println("WiFi Status");
     gfx->drawFastHLine(0, 60, 800, CYAN);
 
-    // Scannen
-    gfx->setTextColor(WHITE);
-    gfx->setTextSize(2);
-    gfx->setCursor(20, 75);
-    gfx->print("Scanning...");
-
-    int n = WiFi.scanNetworks();
-
-    gfx->fillRect(0, 65, 800, 30, BLACK);
-
-    if (n == 0) {
-        gfx->setTextColor(RED);
-        gfx->setCursor(20, 75);
-        gfx->print("Keine Netzwerke gefunden!");
-        return;
-    }
-
-    // Header
+    // SSID
     gfx->setTextColor(YELLOW);
     gfx->setTextSize(2);
-    gfx->setCursor(20, 70);
-    gfx->print("SSID");
-    gfx->setCursor(550, 70);
-    gfx->print("RSSI");
-    gfx->setCursor(650, 70);
-    gfx->print("Signal");
-    gfx->setCursor(760, 70);
-    gfx->print("🔒");
-    gfx->drawFastHLine(0, 95, 800, DARKGREY);
+    gfx->setCursor(20, 80);
+    gfx->print("SSID:     ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WiFi.SSID());
 
-    // Max 8 Netzwerke anzeigen
-    int maxNetworks = min(n, 8);
-    for (int i = 0; i < maxNetworks; i++) {
-        int y = 105 + i * 45;
-        int rssi = WiFi.RSSI(i);
-        uint16_t color = rssiToColor(rssi);
-        int bars = rssiToBars(rssi);
+    // IP
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 115);
+    gfx->print("IP:       ");
+    gfx->setTextColor(GREEN);
+    gfx->println(WiFi.localIP().toString());
 
-        // Zebra-Hintergrund
-        if (i % 2 == 0)
-            gfx->fillRect(0, y - 5, 800, 44, 0x1082);
+    // Gateway
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 150);
+    gfx->print("Gateway:  ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WiFi.gatewayIP().toString());
 
-        // SSID
-        gfx->setTextColor(WHITE);
-        gfx->setTextSize(2);
-        gfx->setCursor(20, y + 10);
-        String ssid = WiFi.SSID(i);
-        if (ssid.length() > 28) ssid = ssid.substring(0, 28) + "..";
-        gfx->print(ssid);
+    // DNS
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 185);
+    gfx->print("DNS:      ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WiFi.dnsIP().toString());
 
-        // RSSI Wert
-        gfx->setTextColor(color);
-        gfx->setCursor(550, y + 10);
-        gfx->print(rssi);
-        gfx->print(" dBm");
+    // Subnet
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 220);
+    gfx->print("Subnet:   ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WiFi.subnetMask().toString());
 
-        // Signalbalken
-        drawSignalBars(660, y + 5, bars, color);
+    // MAC
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 255);
+    gfx->print("MAC:      ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WiFi.macAddress());
 
-        // Verschlüsselung
-        gfx->setTextColor(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? GREEN : ORANGE);
-        gfx->setCursor(760, y + 10);
-        gfx->print(WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "Open" : "WPA");
-    }
+    // RSSI
+    int rssi = WiFi.RSSI();
+    uint16_t rssiColor = rssi >= -50 ? GREEN : rssi >= -65 ? YELLOW : rssi >= -75 ? ORANGE : RED;
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 290);
+    gfx->print("Signal:   ");
+    gfx->setTextColor(rssiColor);
+    gfx->print(rssi);
+    gfx->println(" dBm");
 
-    // Footer
-    gfx->drawFastHLine(0, 470, 800, DARKGREY);
+    // Kanal
+    gfx->setTextColor(YELLOW);
+    gfx->setCursor(20, 325);
+    gfx->print("Kanal:    ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WiFi.channel());
+
+    // Trennlinie
+    gfx->drawFastHLine(0, 370, 800, DARKGREY);
+
+    // Status
+    gfx->setTextColor(GREEN);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 385);
+    gfx->println("● Verbunden");
+
+    // Uptime
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(1);
-    gfx->setCursor(20, 473);
-    gfx->print("Gefunden: ");
-    gfx->print(n);
-    gfx->print(" Netzwerke  |  Scan wiederholt in 10s");
+    gfx->setCursor(20, 420);
+    gfx->print("Uptime: ");
+    gfx->print(millis() / 1000);
+    gfx->println(" Sekunden");
+}
 
-    Serial.print("Gefunden: ");
-    Serial.println(n);
+void showConnecting() {
+    gfx->fillScreen(BLACK);
+    gfx->setTextColor(CYAN);
+    gfx->setTextSize(3);
+    gfx->setCursor(20, 20);
+    gfx->println("WiFi Status");
+    gfx->drawFastHLine(0, 60, 800, CYAN);
+    gfx->setTextColor(YELLOW);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 100);
+    gfx->print("Verbinde mit: ");
+    gfx->setTextColor(WHITE);
+    gfx->println(WIFI_SSID);
+    gfx->setTextColor(ORANGE);
+    gfx->setCursor(20, 140);
+    gfx->println("Bitte warten...");
 }
 
 void setup() {
     Serial.begin(115200);
     gfx->begin();
+
+    showConnecting();
+
     WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    delay(100);
-    scanWiFi();
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        attempts++;
+        Serial.print(".");
+        // Punkte auf Display
+        gfx->setTextColor(WHITE);
+        gfx->setTextSize(2);
+        gfx->setCursor(20 + attempts * 12, 180);
+        gfx->print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nVerbunden!");
+        drawStatusScreen();
+    } else {
+        gfx->fillScreen(BLACK);
+        gfx->setTextColor(RED);
+        gfx->setTextSize(3);
+        gfx->setCursor(20, 200);
+        gfx->println("Verbindung fehlgeschlagen!");
+        Serial.println("\nVerbindung fehlgeschlagen!");
+    }
 }
 
 void loop() {
-    delay(10000);
-    scanWiFi();
+    // Status alle 30s aktualisieren
+    delay(30000);
+    if (WiFi.status() == WL_CONNECTED) {
+        drawStatusScreen();
+    }
 }
