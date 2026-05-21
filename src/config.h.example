@@ -1,4 +1,11 @@
 #pragma once
 
+// WiFi
 #define WIFI_SSID     "dein_netzwerk"
 #define WIFI_PASSWORD "dein_passwort"
+
+// Geräte für Ping Monitor
+#define PING_DEVICES { \
+    {"192.168.1.1", "Fritz-Box"} \
+}
+#define PING_DEVICE_COUNT 1

@@ -26,14 +26,8 @@ struct Device {
     const char* name;
 };
 
-Device devices[] = {
-    {"192.168.1.1",   "Fritz-Box"},
-    {"192.168.1.50",  "Tempel2 File Server"},
-    {"192.168.1.33",  "Fritz Repeater 1"},
-    {"192.168.1.131", "Fritz Repeater 2"},
-    {"192.168.1.40",  "Agfeo Telefonanlage"}
-};
-const int deviceCount = 5;
+Device devices[] = PING_DEVICES;
+const int deviceCount = PING_DEVICE_COUNT;
 
 String lastTime = "";
 String lastDate = "";
