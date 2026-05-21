@@ -39,7 +39,7 @@ String lastTime = "";
 String lastDate = "";
 int currentPage = 0;
 unsigned long lastPageSwitch = 0;
-const unsigned long PAGE_DURATION = 20000; // 20 Sekunden
+const unsigned long PAGE_DURATION = 10000; // 20 Sekunden
 
 // ─── Seite 1: Dashboard ───────────────────────────────────────────────────────
 void drawDashboardStatic() {
@@ -188,7 +188,7 @@ void drawPingPage() {
         gfx->setTextColor(ok ? GREEN : RED);
         gfx->setTextSize(2);
         gfx->setCursor(600, y + 18);
-        gfx->print(ok ? "● ONLINE" : "● OFFLINE");
+        gfx->print(ok ? ">> ONLINE" : "!! OFFLINE");
     }
 
     // Scanning Meldung löschen
