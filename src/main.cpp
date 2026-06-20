@@ -3,6 +3,9 @@
 #include <WiFi.h>
 #include <time.h>
 #include <ESP32Ping.h>
+#include <BLEDevice.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
 #include "config.h"
 
 // Display Setup
@@ -25,32 +28,96 @@ struct Device {
     const char* ip;
     const char* name;
 };
-
 Device devices[] = PING_DEVICES;
 const int deviceCount = PING_DEVICE_COUNT;
 
+// BLE UUIDs
+#define SERVICE_UUID  "12345678-1234-1234-1234-123456789abc"
+#define TEMP_UUID     "12345678-1234-1234-1234-123456789ab1"
+#define HUM_UUID      "12345678-1234-1234-1234-123456789ab2"
+#define PRES_UUID     "12345678-1234-1234-1234-123456789ab3"
+
+// BLE Variablen
+static BLERemoteCharacteristic* tempChar;
+static BLERemoteCharacteristic* humChar;
+static BLERemoteCharacteristic* presChar;
+static BLEAdvertisedDevice* myDevice;
+bool doConnect = false;
+bool connected = false;
+bool doScan = false;
+
+float bleTemp = 0.0;
+float bleHum  = 0.0;
+float blePres = 0.0;
+String bleStatus = "Suche...";
+
+// Seiten
 String lastTime = "";
 String lastDate = "";
 int currentPage = 0;
 unsigned long lastPageSwitch = 0;
-const unsigned long PAGE_DURATION = 10000; // 20 Sekunden
+const unsigned long PAGE_DURATION = 10000;
+
+// ─── BLE Callbacks ────────────────────────────────────────────────────────────
+class ClientCallbacks : public BLEClientCallbacks {
+    void onConnect(BLEClient* client) { connected = true; }
+    void onDisconnect(BLEClient* client) {
+        connected = false;
+        bleStatus = "Getrennt";
+        doScan = true;
+    }
+};
+
+class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+    void onResult(BLEAdvertisedDevice advertisedDevice) {
+        if (advertisedDevice.getName() == "ESP32-C3 Wetterstation") {
+            BLEDevice::getScan()->stop();
+            myDevice = new BLEAdvertisedDevice(advertisedDevice);
+            doConnect = true;
+            bleStatus = "Gefunden!";
+        }
+    }
+};
+
+bool connectToServer() {
+    BLEClient* client = BLEDevice::createClient();
+    client->setClientCallbacks(new ClientCallbacks());
+    client->connect(myDevice);
+
+    BLERemoteService* service = client->getService(SERVICE_UUID);
+    if (service == nullptr) return false;
+
+    tempChar = service->getCharacteristic(TEMP_UUID);
+    humChar  = service->getCharacteristic(HUM_UUID);
+    presChar = service->getCharacteristic(PRES_UUID);
+
+    if (tempChar == nullptr || humChar == nullptr || presChar == nullptr) return false;
+
+    bleStatus = "Verbunden";
+    return true;
+}
+
+void startBLEScan() {
+    BLEScan* scan = BLEDevice::getScan();
+    scan->setAdvertisedDeviceCallbacks(new AdvertisedDeviceCallbacks());
+    scan->setInterval(1349);
+    scan->setWindow(449);
+    scan->setActiveScan(true);
+    scan->start(5, false);
+}
 
 // ─── Seite 1: Dashboard ───────────────────────────────────────────────────────
 void drawDashboardStatic() {
     gfx->fillScreen(BLACK);
-
     gfx->fillRect(0, 0, 800, 55, 0x1082);
     gfx->setTextColor(CYAN);
     gfx->setTextSize(3);
     gfx->setCursor(20, 12);
     gfx->print("ESP32-S3 Dashboard");
-
-    // Seitenindikator
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(2);
-    gfx->setCursor(680, 18);
-    gfx->print("1 / 2");
-
+    gfx->setCursor(650, 18);
+    gfx->print("1 / 3");
     gfx->drawFastHLine(0, 55, 800, CYAN);
 
     gfx->setTextColor(YELLOW);
@@ -88,7 +155,7 @@ void drawDashboardStatic() {
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(1);
     gfx->setCursor(20, 468);
-    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.1");
+    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.2");
 
     lastTime = "";
     lastDate = "";
@@ -125,24 +192,20 @@ void updateClock() {
     }
 }
 
-// ─── Seite 2: Ping Monitor ───────────────────────────────────────────────────
+// ─── Seite 2: Ping Monitor ────────────────────────────────────────────────────
 void drawPingPage() {
     gfx->fillScreen(BLACK);
-
     gfx->fillRect(0, 0, 800, 55, 0x1082);
     gfx->setTextColor(CYAN);
     gfx->setTextSize(3);
     gfx->setCursor(20, 12);
     gfx->print("Netzwerk Monitor");
-
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(2);
-    gfx->setCursor(680, 18);
-    gfx->print("2 / 2");
-
+    gfx->setCursor(650, 18);
+    gfx->print("2 / 3");
     gfx->drawFastHLine(0, 55, 800, CYAN);
 
-    // Scanning Meldung
     gfx->setTextColor(YELLOW);
     gfx->setTextSize(2);
     gfx->setCursor(20, 68);
@@ -150,52 +213,107 @@ void drawPingPage() {
 
     for (int i = 0; i < deviceCount; i++) {
         int y = 100 + i * 70;
-
-        // Zebra
         if (i % 2 == 0)
             gfx->fillRect(0, y - 5, 800, 68, 0x1082);
 
-        // Ping ausführen
         bool ok = Ping.ping(devices[i].ip, 1);
 
-        // Status Kreis
         gfx->fillCircle(30, y + 25, 18, ok ? GREEN : RED);
-        gfx->setTextColor(ok ? GREEN : RED);
-        gfx->setTextSize(2);
-        gfx->setCursor(20, y + 18);
         gfx->setTextColor(BLACK);
+        gfx->setTextSize(2);
+        gfx->setCursor(14, y + 20);
         gfx->print(ok ? "OK" : "!!");
 
-        // Name
         gfx->setTextColor(WHITE);
-        gfx->setTextSize(2);
         gfx->setCursor(65, y + 8);
         gfx->print(devices[i].name);
 
-        // IP
         gfx->setTextColor(DARKGREY);
-        gfx->setTextSize(2);
         gfx->setCursor(65, y + 32);
         gfx->print(devices[i].ip);
 
-        // Status Text
         gfx->setTextColor(ok ? GREEN : RED);
-        gfx->setTextSize(2);
         gfx->setCursor(600, y + 18);
         gfx->print(ok ? ">> ONLINE" : "!! OFFLINE");
     }
 
-    // Scanning Meldung löschen
     gfx->fillRect(0, 60, 300, 30, BLACK);
+    gfx->drawFastHLine(0, 460, 800, DARKGREY);
+    gfx->setTextColor(DARKGREY);
+    gfx->setTextSize(1);
+    gfx->setCursor(20, 468);
+    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.2");
+}
+
+// ─── Seite 3: BLE Wetterstation ───────────────────────────────────────────────
+void drawWeatherPage() {
+    gfx->fillScreen(BLACK);
+    gfx->fillRect(0, 0, 800, 55, 0x1082);
+    gfx->setTextColor(CYAN);
+    gfx->setTextSize(3);
+    gfx->setCursor(20, 12);
+    gfx->print("Wetterstation BLE");
+    gfx->setTextColor(DARKGREY);
+    gfx->setTextSize(2);
+    gfx->setCursor(650, 18);
+    gfx->print("3 / 3");
+    gfx->drawFastHLine(0, 55, 800, CYAN);
+
+    // BLE Status
+    gfx->setTextColor(connected ? GREEN : ORANGE);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 68);
+    gfx->print("BLE: ");
+    gfx->print(bleStatus);
+
+    gfx->drawFastHLine(0, 95, 800, DARKGREY);
+
+    if (connected) {
+        // Temperatur
+        gfx->fillRect(0, 100, 800, 120, 0x1082);
+        gfx->setTextColor(YELLOW);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 115);
+        gfx->print("Temperatur:");
+        gfx->setTextColor(WHITE);
+        gfx->setTextSize(5);
+        gfx->setCursor(300, 105);
+        gfx->printf("%.1f C", bleTemp);
+
+        // Luftfeuchtigkeit
+        gfx->setTextColor(YELLOW);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 240);
+        gfx->print("Luftfeuchtigkeit:");
+        gfx->setTextColor(CYAN);
+        gfx->setTextSize(5);
+        gfx->setCursor(300, 230);
+        gfx->printf("%.1f %%", bleHum);
+
+        // Luftdruck
+        gfx->setTextColor(YELLOW);
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 360);
+        gfx->print("Luftdruck:");
+        gfx->setTextColor(GREEN);
+        gfx->setTextSize(4);
+        gfx->setCursor(300, 350);
+        gfx->printf("%.1f hPa", blePres);
+    } else {
+        gfx->setTextColor(DARKGREY);
+        gfx->setTextSize(3);
+        gfx->setCursor(200, 220);
+        gfx->print("Warte auf Sensor...");
+    }
 
     gfx->drawFastHLine(0, 460, 800, DARKGREY);
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(1);
     gfx->setCursor(20, 468);
-    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.1");
+    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.2");
 }
 
-// ─── Setup ───────────────────────────────────────────────────────────────────
+// ─── Setup ────────────────────────────────────────────────────────────────────
 void showConnecting() {
     gfx->fillScreen(BLACK);
     gfx->setTextColor(CYAN);
@@ -243,13 +361,16 @@ void setup() {
     }
 
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
     struct tm timeinfo;
     int ntpAttempts = 0;
     while (!getLocalTime(&timeinfo) && ntpAttempts < 10) {
         delay(500);
         ntpAttempts++;
     }
+
+    // BLE initialisieren
+    BLEDevice::init("");
+    startBLEScan();
 
     drawDashboardStatic();
     lastPageSwitch = millis();
@@ -259,13 +380,38 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
+    // BLE verbinden
+    if (doConnect) {
+        connectToServer();
+        doConnect = false;
+    }
+
+    // BLE Daten lesen
+    if (connected && tempChar && humChar && presChar) {
+        bleTemp = atof(tempChar->readValue().c_str());
+        bleHum  = atof(humChar->readValue().c_str());
+        blePres = atof(presChar->readValue().c_str());
+    }
+
+    // Neu scannen wenn getrennt
+    if (doScan) {
+        startBLEScan();
+        doScan = false;
+    }
+
+    // Seiten wechseln
     if (currentPage == 0) {
         updateClock();
-
         if (now - lastPageSwitch >= PAGE_DURATION) {
             currentPage = 1;
             lastPageSwitch = now;
             drawPingPage();
+        }
+    } else if (currentPage == 1) {
+        if (now - lastPageSwitch >= PAGE_DURATION) {
+            currentPage = 2;
+            lastPageSwitch = now;
+            drawWeatherPage();
         }
     } else {
         if (now - lastPageSwitch >= PAGE_DURATION) {
