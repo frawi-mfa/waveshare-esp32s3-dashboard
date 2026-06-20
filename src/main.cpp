@@ -103,7 +103,7 @@ void startBLEScan() {
     scan->setInterval(1349);
     scan->setWindow(449);
     scan->setActiveScan(true);
-    scan->start(5, false);
+    scan->start(10, false);
 }
 
 // ─── Seite 1: Dashboard ───────────────────────────────────────────────────────
@@ -379,7 +379,12 @@ void setup() {
 // ─── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
     unsigned long now = millis();
-
+    // Alle 30 Sekunden neu scannen wenn nicht verbunden
+    static unsigned long lastScan = 0;
+        if (!connected && !doConnect && (now - lastScan > 30000)) {
+        lastScan = now;
+        doScan = true;
+    }
     // BLE verbinden
     if (doConnect) {
         connectToServer();
