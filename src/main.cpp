@@ -6,6 +6,9 @@
 #include <BLEDevice.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
+#include <Wire.h>
+#include <Adafruit_BME280.h>
+#include <Adafruit_Sensor.h>
 #include "config.h"
 
 // Display Setup
@@ -30,6 +33,11 @@ struct Device {
 };
 Device devices[] = PING_DEVICES;
 const int deviceCount = PING_DEVICE_COUNT;
+
+// BME280 Innen
+Adafruit_BME280 bme;
+float inTemp = 0.0;
+float inHum  = 0.0;
 
 // BLE UUIDs
 #define SERVICE_UUID  "12345678-1234-1234-1234-123456789abc"
@@ -155,7 +163,7 @@ void drawDashboardStatic() {
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(1);
     gfx->setCursor(20, 468);
-    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.2");
+    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.3");
 
     lastTime = "";
     lastDate = "";
@@ -242,75 +250,106 @@ void drawPingPage() {
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(1);
     gfx->setCursor(20, 468);
-    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.2");
+    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.3");
 }
 
-// ─── Seite 3: BLE Wetterstation ───────────────────────────────────────────────
+// ─── Seite 3: Wetterstation Innen/Außen ───────────────────────────────────────
 void drawWeatherPage() {
+    // Innen BME280 lesen
+    inTemp = bme.readTemperature();
+    inHum  = bme.readHumidity();
+
     gfx->fillScreen(BLACK);
     gfx->fillRect(0, 0, 800, 55, 0x1082);
     gfx->setTextColor(CYAN);
     gfx->setTextSize(3);
     gfx->setCursor(20, 12);
-    gfx->print("Wetterstation BLE");
+    gfx->print("Wetterstation");
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(2);
     gfx->setCursor(650, 18);
     gfx->print("3 / 3");
     gfx->drawFastHLine(0, 55, 800, CYAN);
 
-    // BLE Status
-    gfx->setTextColor(connected ? GREEN : ORANGE);
+    // Spalten Header
+    gfx->setTextColor(YELLOW);
     gfx->setTextSize(2);
-    gfx->setCursor(20, 68);
-    gfx->print("BLE: ");
-    gfx->print(bleStatus);
+    gfx->setCursor(300, 65);
+    gfx->print("INNEN");
+    gfx->setCursor(580, 65);
+    gfx->print("AUSSEN");
 
-    gfx->drawFastHLine(0, 95, 800, DARKGREY);
+    // BLE Status klein
+    gfx->setTextColor(connected ? GREEN : ORANGE);
+    gfx->setTextSize(1);
+    gfx->setCursor(580, 58);
+    gfx->print(connected ? "(BLE OK)" : "(BLE: suche)");
 
+    gfx->drawFastHLine(0, 90, 800, DARKGREY);
+
+    // Temperatur
+    gfx->setTextColor(YELLOW);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 110);
+    gfx->print("Temperatur:");
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(3);
+    gfx->setCursor(250, 105);
+    gfx->printf("%.1f C", inTemp);
+    gfx->setTextColor(connected ? WHITE : DARKGREY);
+    gfx->setCursor(530, 105);
+    gfx->printf("%.1f C", bleTemp);
+
+    gfx->drawFastHLine(0, 150, 800, 0x1082);
+
+    // Luftfeuchtigkeit
+    gfx->setTextColor(YELLOW);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 175);
+    gfx->print("Luftfeuchte:");
+    gfx->setTextColor(CYAN);
+    gfx->setTextSize(3);
+    gfx->setCursor(250, 170);
+    gfx->printf("%.1f %%", inHum);
+    gfx->setTextColor(connected ? CYAN : DARKGREY);
+    gfx->setCursor(530, 170);
+    gfx->printf("%.1f %%", bleHum);
+
+    gfx->drawFastHLine(0, 215, 800, 0x1082);
+
+    // Luftdruck nur Außen
+    gfx->setTextColor(YELLOW);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 240);
+    gfx->print("Luftdruck:");
+    gfx->setTextColor(connected ? GREEN : DARKGREY);
+    gfx->setTextSize(3);
+    gfx->setCursor(530, 235);
+    gfx->printf("%.1f hPa", blePres);
+
+    gfx->drawFastHLine(0, 280, 800, 0x1082);
+
+    // Differenz Innen/Außen Temperatur
     if (connected) {
-        // Temperatur
-        gfx->fillRect(0, 100, 800, 120, 0x1082);
-        gfx->setTextColor(YELLOW);
-        gfx->setTextSize(2);
-        gfx->setCursor(20, 115);
-        gfx->print("Temperatur:");
-        gfx->setTextColor(WHITE);
-        gfx->setTextSize(5);
-        gfx->setCursor(300, 105);
-        gfx->printf("%.1f C", bleTemp);
-
-        // Luftfeuchtigkeit
-        gfx->setTextColor(YELLOW);
-        gfx->setTextSize(2);
-        gfx->setCursor(20, 240);
-        gfx->print("Luftfeuchtigkeit:");
-        gfx->setTextColor(CYAN);
-        gfx->setTextSize(5);
-        gfx->setCursor(300, 230);
-        gfx->printf("%.1f %%", bleHum);
-
-        // Luftdruck
-        gfx->setTextColor(YELLOW);
-        gfx->setTextSize(2);
-        gfx->setCursor(20, 360);
-        gfx->print("Luftdruck:");
-        gfx->setTextColor(GREEN);
-        gfx->setTextSize(4);
-        gfx->setCursor(300, 350);
-        gfx->printf("%.1f hPa", blePres);
-    } else {
+        float diffTemp = inTemp - bleTemp;
+        float diffHum  = inHum - bleHum;
         gfx->setTextColor(DARKGREY);
-        gfx->setTextSize(3);
-        gfx->setCursor(200, 220);
-        gfx->print("Warte auf Sensor...");
+        gfx->setTextSize(2);
+        gfx->setCursor(20, 305);
+        gfx->print("Differenz:");
+        gfx->setTextColor(diffTemp > 0 ? ORANGE : CYAN);
+        gfx->setCursor(250, 300);
+        gfx->printf("%+.1f C", diffTemp);
+        gfx->setTextColor(diffHum > 0 ? ORANGE : CYAN);
+        gfx->setCursor(530, 300);
+        gfx->printf("%+.1f %%", diffHum);
     }
 
     gfx->drawFastHLine(0, 460, 800, DARKGREY);
     gfx->setTextColor(DARKGREY);
     gfx->setTextSize(1);
     gfx->setCursor(20, 468);
-    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.2");
+    gfx->print("Tempel-Bau Nord GmbH  |  ESP32-S3 Network Dashboard v1.3");
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -368,6 +407,14 @@ void setup() {
         ntpAttempts++;
     }
 
+    // BME280 Innen initialisieren
+    Wire.begin(8, 9);
+    if (!bme.begin(0x76, &Wire)) {
+        Serial.println("BME280 nicht gefunden!");
+    } else {
+        Serial.println("BME280 Innen OK!");
+    }
+
     // BLE initialisieren
     BLEDevice::init("");
     startBLEScan();
@@ -379,12 +426,14 @@ void setup() {
 // ─── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
     unsigned long now = millis();
+
     // Alle 30 Sekunden neu scannen wenn nicht verbunden
     static unsigned long lastScan = 0;
-        if (!connected && !doConnect && (now - lastScan > 30000)) {
+    if (!connected && !doConnect && (now - lastScan > 30000)) {
         lastScan = now;
         doScan = true;
     }
+
     // BLE verbinden
     if (doConnect) {
         connectToServer();
