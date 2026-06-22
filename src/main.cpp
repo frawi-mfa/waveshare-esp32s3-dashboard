@@ -224,8 +224,8 @@ void drawPingPage() {
         if (i % 2 == 0)
             gfx->fillRect(0, y - 5, 800, 68, 0x1082);
 
-        bool ok = Ping.ping(devices[i].ip, 2);
-
+        bool ok = Ping.ping(devices[i].ip, 1);
+ 
         gfx->fillCircle(30, y + 25, 18, ok ? GREEN : RED);
         gfx->setTextColor(BLACK);
         gfx->setTextSize(2);
@@ -460,13 +460,19 @@ void loop() {
             currentPage = 1;
             lastPageSwitch = now;
             drawPingPage();
-        }
+       }
     } else if (currentPage == 1) {
+        // Ping alle 5 Sekunden neu zeichnen
+        static unsigned long lastPing = 0;
+        if (now - lastPing > 5000) {
+            lastPing = now;
+            drawPingPage();
+        }
         if (now - lastPageSwitch >= PAGE_DURATION) {
             currentPage = 2;
             lastPageSwitch = now;
             drawWeatherPage();
-        }
+       }
     } else {
         if (now - lastPageSwitch >= PAGE_DURATION) {
             currentPage = 0;
