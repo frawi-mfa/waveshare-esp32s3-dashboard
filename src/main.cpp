@@ -224,7 +224,7 @@ void drawPingPage() {
         if (i % 2 == 0)
             gfx->fillRect(0, y - 5, 800, 68, 0x1082);
 
-        bool ok = Ping.ping(devices[i].ip, 1);
+        bool ok = Ping.ping(devices[i].ip, 2);
 
         gfx->fillCircle(30, y + 25, 18, ok ? GREEN : RED);
         gfx->setTextColor(BLACK);
