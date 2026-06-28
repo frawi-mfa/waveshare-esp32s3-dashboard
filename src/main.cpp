@@ -617,16 +617,23 @@ void loop() {
         doScan = false;
     }
 
-    // Auto Seitenwechsel: Seite 1 → Seite 3 (Wetterstation)
-   if (currentPage == 0) {
+// Auto Seitenwechsel: Seite 1 → Seite 3 (Wetterstation)
+if (currentPage == 0) {
     updateClock();
     if (now - lastPageSwitch >= PAGE_DURATION) {
         currentPage = 2;
         lastPageSwitch = now;
         drawWeatherPage();
     }
+} else if (currentPage == 2) {
+    // Wetterstation alle 5 Sekunden aktualisieren
+    static unsigned long lastWeather = 0;
+    if (now - lastWeather > 5000) {
+        lastWeather = now;
+        drawWeatherPage();
+    }
 }
-    // Seiten 2 und 3 bleiben bis Touch
+// Seiten 1, 3 bleiben bis Touchh
 
     delay(100); // kürzer für bessere Touch Reaktion
 }
